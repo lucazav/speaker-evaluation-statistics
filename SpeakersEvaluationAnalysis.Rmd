@@ -1,0 +1,754 @@
+---
+title: 'Demo Event: Speakers Evaluation'
+author: "Luca Zavarella"
+date: "December 3, 2018"
+output:
+  html_document:
+    self_contained: yes
+    toc: yes
+    toc_float:
+      collapsed: yes
+  pdf_document:
+    toc: yes
+---
+
+```{r load-packages, message=FALSE, echo=FALSE}
+
+####################################
+#  INPUT VARIABLES IN EXCEL FILES  #
+####################################
+excel.full.path <- "Scores.xlsx"
+speaker.characteristcs <- c("Expectation", "Interesting", "Useful", "OralPresentation")
+speaker.qualities <- c("IsFunny", "IsExpert", "IsOrator", "IsMotivator", "IsTeacher")   # Use NULL if you haven't qualitiy measures (speaker's attitudes)
+
+exists.notes <- 1  # Use 1 if your Excel sheet Sessions has the column "Notes"; 0 otherwise
+
+# You can set the text horizontal justification for both the circular grouped barplot
+# at the end of the report. The length of vectors must mach the length of speaker.characteristics
+# and speaker.qualities vectors respectively
+characteristics.circular.barplot.txthjust <- c(1,1,0,0)
+qualities.circular.barplot.txthjust <- c(1,1,0.5,0,0)
+
+feedback.image.path <- "feedback.png"   # Use an empty string if you haven't any feedback ticket image to show
+####################################
+
+old.w <- getOption("warn")
+options(warn = -1)
+
+# Cran packages
+list.of.packages <- c("openxlsx", "tidyverse", "ggplot2", "githubinstall", "scales",
+                      "knitr", "kableExtra", "devtools", "reshape2", "ggrepel",
+                      "cowplot", "googleVis")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+
+invisible(lapply(list.of.packages, require, character.only = TRUE))
+
+# Github packages
+list.of.packages <- c("ggradar")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) githubinstall(new.packages)
+
+invisible(lapply(list.of.packages, require, character.only = TRUE))
+
+speakers <- read.xlsx(excel.full.path, sheet = 1)
+sessions <- read.xlsx(excel.full.path, sheet = 2)
+
+
+options(knitr.table.format = "html")
+
+theme_update(plot.title = element_text(hjust = 0.5, size = 28),
+             plot.subtitle = element_text(hjust = 0.5, size = 20),
+             axis.text = element_text(size = 14),
+             axis.title = element_text(size = 20),
+             strip.text = element_text(size = 24))
+
+df <- sessions %>%
+  inner_join(speakers, by = "SpeakerName") %>%
+  mutate(TrackName = as.factor(TrackName))
+```
+## Details
+
+The following is the ticket for feedbacks:
+
+```{r out.width = "50%", echo=FALSE}
+if (feedback.image.path != "" & file.exists(feedback.image.path))
+  include_graphics(feedback.image.path)
+```
+
+Attendees could evaluate four speaker characteristics:
+
+* Expectation ("Aspettative")
+* Interesting ("Interessante")
+* Useful ("Utile")
+* OralPresentation ("Esposizione")
+
+For each one the attendee could choose from 1 (not appreciated) to 6 smiles (really appreciated).
+In addition to this he could choose one or more of these qualities:
+
+* Funny ("Divertente")
+* Expert ("Esperto")
+* Orator ("Oratore")
+* Motivator ("Motivatore")
+* Teacher ("Insegnante")
+
+The tracks that were available at the Demo Event are these ones:
+```{r tracks, results='asis', echo=FALSE}
+df %>% 
+  distinct(TrackName) %>%
+  kable %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+### Adoption of Trimmed Mean
+
+The **trimmed mean** is computed by discarting a certain percentage of the lowest and the highest scores in a ordered set of data and then computing the mean of the remaining scores. Trimmed means are used in certain sporting events (e.g. ice skating, gymnastics) to judge competitors' levels of performance and to prevent the effects of extreme ratings, possibly caused by biased judges. In our case, there is quite always someone who doesn't feel comfortable with the topic and gives so a low evaluation, and someone who's a speaker's friend, that overestimates his session.
+
+So let's first calculate an auxiliary data frame containing the 10th and 90th percentile of the total evaluation distribution, given by the sum of the characteristic evaluations for each speaker:
+```{r perc-10-90-by-speaker, results='asis', echo=FALSE}
+trimTreshold <- 0.2
+
+new.names <- c(var1="SpeakerName", speaker.characteristcs)
+old.names <- paste0(".dots", 1:length(new.names))
+
+perc <- df %>%
+  select_(.dots=c("SpeakerName", speaker.characteristcs)) %>%
+  mutate_if(is.numeric, funs(replace(., is.na(.), 0))) %>% # Fill NA values in numeric cols with 0
+  mutate(TotalEvaluation = rowSums(.[speaker.characteristcs])) %>%
+  group_by(SpeakerName) %>%
+  #do(data.frame(t(quantile(.$ranker, na.rm = TRUE, probs = c(0.10, 0.90)))))
+  summarise(perc10 = quantile(TotalEvaluation, na.rm = TRUE, probs=trimTreshold / 2),
+            perc90 = quantile(TotalEvaluation, na.rm = TRUE, probs=1 - trimTreshold / 2))
+
+perc %>% kable %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+We want to trim the values before the 10th percentile and after the 90th percentile of the distribution. The *'ToBeTrimmed'* column identifies the rows out of the upon mentioned range.
+The NA values in the numeric columns are replaced with 0.
+```{r, message=FALSE, echo=FALSE}
+cleaned <- df %>%
+  mutate_if(is.numeric, funs(replace(., is.na(.), 0))) %>% # Fill NA values in numeric cols with 0
+  mutate(TotalEvaluation = rowSums(.[speaker.characteristcs])) %>%
+  inner_join(perc, c("SpeakerName" = "SpeakerName")) %>%
+  mutate(ToBeTrimmed = ifelse(TotalEvaluation < perc10 | TotalEvaluation > perc90, 1, 0))
+```
+
+Here the whole row details for each speaker:
+```{r speaker-details, results='asis', fig.width=10, fig.height=10, message=FALSE, echo=FALSE}
+fillPalette <- c("#08306b", "#08519c", "#2171b5", "#4292c6", "#6baed6", "#9ecae1", "#c6dbef", "#deebf7")
+
+summarise_qualities <- function(q){
+      round(sum(q) / length(q) * 100, digits = 0)
+}
+
+for (s in unique(df$SpeakerName))
+{
+  cat("<br>")
+  cat("<br>")
+  cat("<br>")
+  
+  cat("<h3>", s, "</h3>", sep = "")
+  
+  numRows <- as.integer(
+    cleaned %>%
+    filter(SpeakerName == s) %>%
+    count())
+  
+  session <- as.character(
+    cleaned %>%
+      filter(SpeakerName == s) %>%
+      distinct(SessionName)
+  )
+  
+  if (!is.null(speaker.qualities)){
+    if (exists.notes == 1){
+      det.vars <- c("SpeakerName", speaker.characteristcs,
+                "TotalEvaluation", "Notes", speaker.qualities, "ToBeTrimmed")
+    } else {
+      det.vars <- c("SpeakerName", speaker.characteristcs,
+                "TotalEvaluation", speaker.qualities, "ToBeTrimmed")
+    }
+  } else {
+    if (exists.notes == 1){
+      det.vars <- c("SpeakerName", speaker.characteristcs,
+                  "TotalEvaluation", "Notes", "ToBeTrimmed")
+    } else {
+      det.vars <- c("SpeakerName", speaker.characteristcs,
+                  "TotalEvaluation", "ToBeTrimmed")
+    }
+  }
+  
+  
+  old.names <- paste0(".dots", 1:length(det.vars))
+  
+  if (exists.notes == 1){
+    det <- cleaned %>%
+      filter(SpeakerName == s) %>%
+      arrange(TotalEvaluation) %>%
+      select_(.dots = det.vars) %>%
+      mutate(Notes = ifelse(is.na(Notes), "", Notes))
+  } else {
+    det <- cleaned %>%
+      filter(SpeakerName == s) %>%
+      arrange(TotalEvaluation) %>%
+      select_(.dots = det.vars)
+  }
+    
+  
+  det %>%
+    select(-SpeakerName) %>%
+    kable() %>%
+    group_rows(paste(s, " (", session, ")", sep=""), 1, numRows) %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed")) %>%
+    print() # Bug of knitr in for loop
+  cat("\n") # Bug of knitr in for loop
+  
+  cat("<br>")
+  cat("<br>")
+  
+  if (!is.null(speaker.qualities)){
+    pd.vars.to.remove <- paste0("-", c("SpeakerName", speaker.qualities, "ToBeTrimmed", "TotalEvaluation"))
+  } else {
+    pd.vars.to.remove <- paste0("-", c("SpeakerName", "ToBeTrimmed", "TotalEvaluation"))
+  }
+  
+  
+  pd <- det %>%
+    select_(.dots = pd.vars.to.remove) %>%
+    melt() %>%
+    mutate(value = factor(value, ordered=TRUE)) %>%
+    group_by(variable, value) %>%
+    summarize(count = n()) %>%
+    ggplot(aes(x=value, label = count)) +
+    geom_bar(aes(weight=count, fill = variable)) +
+    geom_text(aes(label = count, y=count), size=4, vjust=1.5, color = "white") +
+    scale_fill_manual(values=fillPalette) +
+    facet_wrap( ~ variable, ncol=2) +
+    theme(
+      strip.text = element_text(size=16)
+    )
+
+  print(pd)
+  
+  cat("<br>")
+  cat("<br>")
+  
+  if (!is.null(speaker.qualities)){
+    cat("The speaker's attitudes are summarized by the following gauges:")
+  
+    cat("<br>")
+    cat("<br>")
+    
+    op <- options(gvis.plot.tag='chart')
+    
+    gauge <-  det %>%
+      select_(.dots = speaker.qualities) %>%
+      summarise_at(.vars = speaker.qualities, funs(summarise_qualities)) %>%
+      gvisGauge(options=list(min=0, max=100, greenFrom=70,
+                             greenTo=100, yellowFrom=30, yellowTo=70,
+                             redFrom=0, redTo=30, width=400, height=300))
+    
+    cat("<center>")
+    plot(gauge)
+    cat("</center>")
+    
+    options(op)
+  }
+  
+}
+```
+
+
+* * *
+
+
+## Statistics per Track
+
+Now let's take a look at the trimmed means for each speaker, grouping by the Trak.
+Some box plot and radar plot are provided.
+```{r stats-by-track, results='asis', fig.width=15, fig.height=10, message=FALSE, warning=FALSE, echo=FALSE}
+tracks <- unique(cleaned$TrackName)
+
+for (t in tracks)
+{
+  cat("<h3>", t, " Track", "</h3>", sep = "")
+  
+  cleaned.m <- cleaned %>%
+    filter(TrackName == t) %>%
+    select_(.dots = speaker.characteristcs) %>%
+    melt()
+  
+  bp <- ggplot(data = cleaned.m, aes(x=value)) +
+    geom_bar(fill="steelblue") +
+    geom_text(stat = "count", aes(label = ..count.., y = ..count..),
+              size=4, vjust = 1.5, color = "white") +
+    facet_wrap( ~ variable, scales="free") +
+    ggtitle("Evaluation Count Per Characteristic") +
+    xlab("Scores") + ylab("Count")
+  
+  print(bp)
+  
+  cat("\n")
+  cat("\n")
+  cat("\n")
+  
+  
+  trimmedMeans <- cleaned %>%
+    filter(TrackName == t & ToBeTrimmed != 1) %>%
+    group_by(TrackName, SpeakerName) %>%
+    add_tally() %>%
+    group_by(TrackName, SpeakerName, n, add = FALSE) %>%
+    summarise_at(.vars = speaker.characteristcs, funs(mean, sd), na.rm=TRUE) %>%
+    rename(NumOfVoters = n)
+  
+  for (characteristic in speaker.characteristcs) {
+    characteristic_str <- paste0(characteristic, "_str")
+    
+    trimmedMeans[characteristic_str] <-
+      trimmedMeans %>% ungroup() %>% select( contains(characteristic) ) %>%
+      tidyr::unite()
+  }
+  
+  paste.Mean.Sd <- function(s){
+    paste(format(as.numeric(strsplit(s, "\\_")[[1]][1]), digits = 2, nsmall = 2),
+          "±",
+          format(as.numeric(strsplit(s, "\\_")[[1]][2]), digits = 2, nsmall = 2)) }
+    
+  
+  trimmedMeans %>%
+    mutate_at(vars(contains('_str')),
+              funs(paste.Mean.Sd(.))) %>%
+    ungroup() %>%
+    select(SpeakerName, NumOfVoters, contains('_str')) %>%
+    rename_at(vars(contains('_str')), funs(sub('_str', '_mean', .))) %>%
+  
+    kable(caption = "Speaker's Trimmed Means and Standard Deviation per Characteristic and Number of Voters") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed")) %>%
+    print() # Bug of knitr in for loop
+  cat("\n") # Bug of knitr in for loop
+  
+  cat("<br>")
+  
+  p <- trimmedMeans %>%
+    ungroup() %>%
+    select(SpeakerName, NumOfVoters, contains('_mean')) %>%
+    mutate_at(vars(-SpeakerName),funs(rescale)) %>%
+    rename_at(vars(contains('_mean')), funs(sub('_mean', '', .))) %>%
+    ggradar(grid.label.size = 7,
+            legend.text.size = 12,
+            axis.label.size = 6) +
+    ggtitle("Speakers Comparison by Track")
+  
+  
+  print(p)
+  
+  cat("<br>")
+  cat("<br>")
+  
+
+  
+  # Track statistics
+  track <- cleaned %>%
+    filter(TrackName == t & ToBeTrimmed != 1) %>%
+    group_by(TrackName) %>%
+    summarise_at(.vars = speaker.characteristcs, funs(mean, sd), na.rm=TRUE)
+
+  
+  id <- trimmedMeans %>%
+    ungroup() %>%
+    select(SpeakerName, NumOfVoters, contains('_mean')) %>%
+    rename_at(vars(contains('_mean')), funs(sub('_mean', '', .))) %>%
+    gather_("Characteristic", "Evaluation", c(speaker.characteristcs, "NumOfVoters"))
+  
+  
+  gd1 <- track %>%
+    select(TrackName, contains('_mean')) %>%
+    rename_at(vars(contains('_mean')), funs(sub('_mean', '', .))) %>%
+    gather_("Characteristic", "Evaluation", speaker.characteristcs)
+  
+  
+  gd2 <- track %>%
+    select(TrackName, contains('_sd')) %>%
+    rename_at(vars(contains('_sd')), funs(sub('_sd', '', .))) %>%
+    gather_("Characteristic", "Evaluation", speaker.characteristcs)
+  
+  
+  gd <- gd1 %>%
+    inner_join(gd2, by = c("TrackName" = "TrackName", "Characteristic" = "Characteristic")) %>%
+    rename(Evaluation_mean = Evaluation.x,
+           Evaluation_sd = Evaluation.y)
+  
+  voters <- cleaned %>%
+    filter(TrackName == t & ToBeTrimmed != 1) %>%
+    group_by(TrackName, SpeakerName) %>%
+    summarise(NumOfVoters = n()) %>%
+    group_by(TrackName) %>%
+    summarise(Evaluation_mean = mean(NumOfVoters, na.rm = TRUE),
+              Evaluation_sd = sd(NumOfVoters, na.rm = TRUE)) %>%
+    mutate(Characteristic = "NumOfVoters")
+  
+  
+  gd <- gd %>%
+    bind_rows(voters)
+  
+  
+  
+  cat("The evaluation mean and standard error by characteristic are the following:",
+      sep = "")
+  
+  cat("<br>")
+  
+  gd %>%
+    mutate(Evaluation_mean = format(Evaluation_mean, digits = 2, nsmall = 2),
+           Evaluation_sd = format(Evaluation_sd, digits = 2, nsmall = 2)) %>%
+    kable() %>%
+    kable_styling(bootstrap_options = c("striped", "condensed")) %>%
+    print() # Bug of knitr in for loop
+  cat("\n") # Bug of knitr in for loop
+  
+  cat("<br>")
+  cat("<br>")
+  
+  cat("Here a detaild view of the speaker distributions around the mean (identified by the bars) by characteristic:",
+      sep = "")
+  
+  cat("<br>")
+  cat("<br>")
+  
+  oc <- id %>%
+    filter(Characteristic != "NumOfVoters") %>%
+    ggplot(aes(x = Characteristic, y = Evaluation,
+                       fill = Characteristic)) +
+    geom_point() +
+    geom_bar(data = gd[gd$Characteristic != "NumOfVoters",],
+             aes(y = Evaluation_mean), stat = "identity", alpha = .5) +
+    ggrepel::geom_text_repel(aes(label = SpeakerName), color = "orange4",
+                             size = 5, segment.color = "grey") +
+    
+    coord_cartesian(ylim=c(3.5,6)) +
+    guides(color = "none", fill = "none") +
+    #theme_bw() +
+    scale_fill_manual(values = fillPalette) +
+    #scale_color_manual(values = colorPalette) +
+    labs(
+      title = "Evaluations by Characteristics",
+      x = "",
+      y = "Evaluations"
+    )
+  
+  #print(oc)
+  
+  ov <- id %>%
+    filter(Characteristic == "NumOfVoters") %>%
+    ggplot(aes(x = Characteristic, y = Evaluation,
+               fill = Characteristic)) +
+    geom_point() +
+    geom_bar(data = gd[gd$Characteristic == "NumOfVoters",],
+             aes(y = Evaluation_mean), stat = "identity", alpha = .5) +
+    ggrepel::geom_text_repel(aes(label = SpeakerName), color = "orange4",
+                             size = 5, segment.color = "grey") +
+    
+    #coord_cartesian(ylim=c(3.5,6)) +
+    guides(color = "none", fill = "none") +
+    #theme_bw() +
+    scale_fill_manual(values = fillPalette) +
+    #scale_color_manual(values = colorPalette) +
+    labs(
+      title = "Voters",
+      x = "",
+      y = "Count"
+    )
+  
+  #print(ov)
+  print(plot_grid(oc, ov, ncol = 2, rel_widths = c(3/4, 1/4)))
+  
+  cat("<br>")
+  cat("<br>")
+  cat("<br>")
+  cat("<br>")
+}
+```
+
+
+* * *
+
+
+## Statistics for All the Tracks
+
+Let's compare all the tracks.
+```{r stats-all-tracks, results='asis', fig.width=15, fig.height=10, message=FALSE, warning=FALSE, echo=FALSE}
+all.tracks <- cleaned %>%
+  filter(ToBeTrimmed != 1) %>%
+  group_by(TrackName) %>%
+  summarise_at(.vars = speaker.characteristcs, funs(mean, sd), na.rm=TRUE)
+
+
+all.voters <- cleaned %>%
+  filter(ToBeTrimmed != 1) %>%
+  group_by(TrackName, SpeakerName) %>%
+  summarise(NumOfVoters = n()) %>%
+  group_by(TrackName) %>%
+  summarise(NumOfVoters_mean = mean(NumOfVoters, na.rm = TRUE),
+            NumOfVoters_sd = sd(NumOfVoters, na.rm = TRUE))
+
+
+all.tracks.info <- all.tracks %>%
+  inner_join(all.voters, by = c("TrackName" = "TrackName"))
+
+
+for (characteristic in c(speaker.characteristcs, "NumOfVoters")) {
+  characteristic_str <- paste0(characteristic, "_str")
+  
+  all.tracks.info[characteristic_str] <-
+    all.tracks.info %>% ungroup() %>% select( contains(characteristic) ) %>%
+    tidyr::unite()
+}
+
+
+all.tracks.info %>%
+  mutate_at(vars(contains('_str')),
+            funs(paste.Mean.Sd(.))) %>%
+  ungroup() %>%
+  select(contains('_str')) %>%
+  rename_at(vars(contains('_str')), funs(sub('_str', '_mean', .))) %>%
+  kable(caption = "Tracks' Means and Standard Deviation per Characteristic and Voters per Session") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+  
+
+tp <- all.tracks.info %>%
+  ungroup() %>%
+  select(TrackName, contains('_mean')) %>%
+  mutate_at(vars(-TrackName),funs(rescale)) %>%
+  rename_at(vars(contains('_mean')), funs(sub('_mean', '', .))) %>%
+  ggradar(grid.label.size = 7,
+          legend.text.size = 12,
+          axis.label.size = 6) +
+  ggtitle(" All Tracks Comparison")
+
+print(tp)
+```
+
+
+* * *
+
+
+## Statistics for All the Speakers
+
+Here some statistics to compare all the speakers.
+
+### Speakers comparison per Characteristic and Attutude
+
+Here are reported the sum of votes each speaker has had for each characteristic:
+```{r speakers-per-characteristic, results='asis', message=FALSE, warning=FALSE, echo=FALSE}
+format_two_dec <- function(d){
+  format(mean(d, na.rm = TRUE), digits = 2, nsmall = 2)
+}
+
+cleaned %>%
+  filter(ToBeTrimmed != 1) %>%
+  select_(.dots = c("SpeakerName", speaker.characteristcs)) %>%
+  group_by(SpeakerName) %>%
+  add_tally() %>%
+  group_by(SpeakerName, n, add = FALSE) %>%
+  summarise_at(.vars = speaker.characteristcs, funs(format_two_dec(.))) %>%
+  rename(NumOfVOters = n) %>%
+  kable(caption = "Speaker's Votes per Characteristic") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+The rank for each characteristic can be easely view thanks to the following circle plot:
+```{r speakers-per-characteristic-plot, results='asis', fig.width=10, fig.height=10, message=FALSE, warning=FALSE, echo=FALSE}
+circular_gruped_barplot <- function(spdata, text_hjust=NULL){
+  # https://www.r-graph-gallery.com/297-circular-barplot-with-groups/
+  
+  # Set a number of 'empty bar' to add at the end of each group
+  empty_bar <- 3
+  spdata.to_add <- data.frame( matrix(NA, empty_bar*nlevels(spdata$Characteristic), ncol(spdata)) )
+  colnames(spdata.to_add) <- colnames(spdata)
+  spdata.to_add$Characteristic <- rep(levels(spdata$Characteristic), each = empty_bar)
+  spdata <- rbind(spdata, spdata.to_add)
+  spdata <- spdata %>% arrange(Characteristic)
+  spdata$id <- seq(1, nrow(spdata))
+  
+  # Get the name and the y position of each label
+  label_spdata <- spdata
+  spdata.number_of_bar <- nrow(label_spdata)
+  spdata.angle <- 90 - 360 * (label_spdata$id - 0.5) / spdata.number_of_bar     # I substract 0.5 because the letter must have the angle of the center of the bars. Not extreme right(1) or extreme left (0)
+  label_spdata$hjust <- ifelse( spdata.angle < -90, 1, 0)
+  label_spdata$angle <- ifelse( spdata.angle < -90, spdata.angle + 180, spdata.angle)
+  
+  # prepare a data frame for base lines
+  base_spdata <- spdata %>% 
+    group_by(Characteristic) %>% 
+    summarize(start = min(id), end = max(id) - empty_bar) %>% 
+    rowwise() %>% 
+    mutate(title = mean(c(start, end)))
+  
+  # prepare a data frame for grid (scales)
+  grid_spdata <- base_spdata
+  grid_spdata$end <- grid_spdata$end[ c( nrow(grid_spdata), 1:nrow(grid_spdata)-1)] + 1
+  grid_spdata$start <- grid_spdata$start - 1
+  grid_spdata <- grid_spdata[-1,]
+  
+  num_characteristics <- length(unique(spdata$Characteristic))
+  
+  if (is.null(text_hjust)){
+    text_horiz_justification <- rep.int(0, num_characteristics)
+  } else {
+    text_horiz_justification <- text_hjust
+  }
+  
+  
+  # Make the plot
+  p <- spdata %>%
+    ggplot(aes(x=as.factor(id), y=Votes, fill=Characteristic)) + # Note that id is a factor. If x is numeric, there is some space between the first bar
+    geom_bar(aes(x=as.factor(id), y=Votes, fill=Characteristic), stat="identity", alpha=0.5) +
+    
+    # Add a val=100/75/50/25 lines. I do it at the beginning to make sur barplots are OVER it.
+    geom_segment(data=grid_spdata, aes(x = end, y = 80, xend = start, yend = 80),
+                 colour = "grey", alpha=1, size=0.3 , inherit.aes = FALSE ) +
+    geom_segment(data=grid_spdata, aes(x = end, y = 60, xend = start, yend = 60),
+                 colour = "grey", alpha=1, size=0.3 , inherit.aes = FALSE ) +
+    geom_segment(data=grid_spdata, aes(x = end, y = 40, xend = start, yend = 40),
+                 colour = "grey", alpha=1, size=0.3 , inherit.aes = FALSE ) +
+    geom_segment(data=grid_spdata, aes(x = end, y = 20, xend = start, yend = 20),
+                 colour = "grey", alpha=1, size=0.3 , inherit.aes = FALSE ) +
+    
+    # Add text showing the value of each 100/75/50/25 lines
+    annotate("text", x = rep(max(spdata$id),4), y = c(20, 40, 60, 80),
+             label = c("20", "40", "60", "80") , color="grey", size=3,
+             angle=0, fontface="bold", hjust=1) +
+    
+    #geom_bar(aes(x=as.factor(id), y=Votes, fill=Characteristic), stat="identity", alpha=0.5) +
+    ylim(-100,120) +
+    theme_minimal() +
+    theme(
+      legend.position = "none",
+      axis.text = element_blank(),
+      axis.title = element_blank(),
+      panel.grid = element_blank(),
+      plot.margin = unit(rep(-1,4), "cm") 
+    ) +
+    coord_polar() + 
+    geom_text(data=label_spdata,
+              aes(x=id, y=Votes + 10, label=SpeakerName, hjust=hjust),
+              color="black", fontface="bold",alpha=0.6, size=3,
+              angle= label_spdata$angle, inherit.aes = FALSE) +
+    
+    # Add base line information
+    geom_segment(data=base_spdata, aes(x = start, y = -5, xend = end, yend = -5),
+                 colour = "black", alpha=0.8, size=0.6 , inherit.aes = FALSE ) +
+    geom_text(data=base_spdata, aes(x = title, y = -18, label=Characteristic),
+              hjust=text_horiz_justification, colour = "black", alpha=0.8, size=4,
+              fontface="bold", inherit.aes = FALSE)
+  
+  return(p)
+}
+
+rescale100 <- function(x) rescale(x, to = c(0, 100))
+               
+spdata <- cleaned %>%
+  filter(ToBeTrimmed != 1) %>%
+  select_(.dots = c("SpeakerName", speaker.characteristcs)) %>%
+  group_by(SpeakerName) %>%
+  add_tally() %>%
+  group_by(SpeakerName, n, add = FALSE) %>%
+  summarise_at(.vars = speaker.characteristcs, funs(mean(., na.rm = TRUE))) %>%
+  rename(NumOfVoters = n) %>%
+  gather_("Characteristic", "Votes", speaker.characteristcs) %>%
+  ungroup() %>%
+  mutate(SpeakerName = as.factor(SpeakerName),
+         Characteristic = as.factor(Characteristic)) %>%
+  mutate_at(vars(Votes),funs(rescale100)) %>%
+  arrange(Characteristic, Votes)
+
+circular_gruped_barplot(spdata = spdata, text_hjust = characteristics.circular.barplot.txthjust)
+
+```
+
+
+```{r speakers-per-attitude, results='asis', message=FALSE, warning=FALSE, echo=FALSE}
+if (!is.null(speaker.qualities)){
+  tab.qualities <- cleaned %>%
+    filter(ToBeTrimmed != 1) %>%
+    select_(.dots = c("SpeakerName", speaker.qualities)) %>%
+    group_by(SpeakerName) %>%
+    add_tally() %>%
+    ungroup() %>%
+    group_by(SpeakerName, n) %>%
+    summarise_at(.vars = speaker.qualities, funs(sum(.))) %>%
+    rename(NumOfVoters = n)
+    
+  
+  rates <- tab.qualities[c("SpeakerName", speaker.qualities)]
+  names(rates) <- c("SpeakerName", paste0(speaker.qualities, "Rate"))
+  
+  tab.qualities <-  tab.qualities %>%
+    inner_join(rates)
+  
+  tab.qualities <- tab.qualities %>%
+    mutate_at(vars(paste0(speaker.qualities, "Rate")), funs(round(./NumOfVoters, digits = 2)))
+  
+  tab.qualities %>%
+    kable(caption = "Speaker's Votes per Attitude. The rate is given by the referring variable divided by the number of voters") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+}
+
+```
+
+```{r speakers-per-attitude-plot, results='asis', fig.width=10, fig.height=10, message=FALSE, warning=FALSE, echo=FALSE}
+if (!is.null(speaker.qualities)){
+  cat("In the same way it's possible to visualize the ranking for each attitude:")
+  
+  spdata2 <- tab.qualities %>%
+    select_(.dots = c("SpeakerName", speaker.qualities)) %>%
+    gather_("Characteristic", "Votes", speaker.qualities) %>%
+    ungroup() %>%
+    mutate(SpeakerName = as.factor(SpeakerName),
+           Characteristic = as.factor(Characteristic)) %>%
+    mutate_at(vars(Votes),funs(rescale100)) %>%
+    arrange(Characteristic, Votes)
+  
+  circular_gruped_barplot(spdata = spdata2, text_hjust = qualities.circular.barplot.txthjust)
+}
+```
+
+
+
+### Speakers Overall Ranking
+
+Averaging the sum of all characteristics' votes, is possible to have an overall ranking for the speakers.
+Here a visualization of the rankings:
+
+```{r overall-ranking-plot, results='asis', fig.width=7, fig.height=7, message=FALSE, warning=FALSE, echo=FALSE}
+ranking <- cleaned %>%
+  filter(ToBeTrimmed != 1) %>%
+  mutate_if(is.numeric, funs(replace(., is.na(.), 0))) %>% # Fill NA values in numeric cols with 0
+  mutate(FinalVote = rowSums(.[speaker.characteristcs])) %>%
+  group_by(SpeakerName) %>%
+  summarise(FinalVote = mean(FinalVote))
+
+ranking %>%
+  arrange(FinalVote) %>%
+  mutate(SpeakerName = factor(SpeakerName, SpeakerName)) %>%
+  ggplot(aes(x=SpeakerName, y=FinalVote)) +
+  geom_segment( aes(x=SpeakerName, xend=SpeakerName, y=0, yend=FinalVote),
+                color="steelblue4", size=1) +
+  geom_point( color="steelblue4", size=4, alpha=0.6) +
+  geom_text(aes(y = FinalVote, label = format(FinalVote, digits = 2, nsmall = 2)),
+            hjust = -0.5, vjust = 0.4,
+            colour = "steelblue4", size=3) +
+  theme_light() +
+  coord_flip(ylim=c(5,25)) +
+  
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.title.x = element_text(size = 20)
+  ) +
+  xlab("") +
+  ylab("Total Characteristics Evaluation")
+
+options(warn = old.w)
+```
+
