@@ -25,3 +25,19 @@ Following a given Excel template, the R code provided in the Rmd ([R Markdown](h
 You can find a fully functional HTML demo [here](https://lucazav.github.io/speaker-evaluation-statistics-demo)
 
 ## Technical Details
+In order to get the report "for free" you have to follow some guidelines.
+### Excel File Structure
+The Excel file to be compiled has to have two sheets in the following order:
+1. Speakers
+2. Sessions
+
+The *Speakers* sheet contains the following informations:
+- Speaker name
+- Session name
+- Track name (usually sessions are grouped in track to better address the attendees interest)
+- Room capacity
+
+The *sessions* sheet contains all the informations about the session evaluations:
+- Speaker name
+- { a set of session evaluations }
+- { a set of speaker evaluations }
