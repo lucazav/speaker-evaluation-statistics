@@ -53,5 +53,9 @@ The input parameters to fill in the Rmd file are the following:
 - *qualities.circular.barplot.txthjust* (vector for label adjustments in a barplot)
 - *feedback.image.path* (full path of an optional image of the evaluation form)
 
+## Current Limitations
+Actually the report has the following limitations:
+- One speaker can deliver only one session
+
 ## Demo
 You can find a fully functional HTML demo [here](https://lucazav.github.io/speaker-evaluation-statistics-demo)
