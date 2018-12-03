@@ -747,7 +747,7 @@ ranking %>%
     panel.grid.major.y = element_blank(),
     panel.border = element_blank(),
     axis.ticks.y = element_blank(),
-    axis.title.x = element_text(size = 16)
+    axis.title.x = element_text(size = 12)
   ) +
   xlab("") +
   ylab("Total Characteristics Evaluation")
