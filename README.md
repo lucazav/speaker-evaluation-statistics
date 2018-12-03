@@ -16,8 +16,12 @@ Here the meanings of Italian phrases:
 | Come ti è sembrata l'esposizione | How the oral presentation was |
 | Cosa ne pensi dello speaker (barra le qualità dello speaker) | What about the speaker (Check the speaker's qualities) |
 | Divertente, Esperto, Oratore, Motivatore, Insegnante | Funny, Expert, Orator, Motivator, Teacher |
+| Note | Notes |
 
-Once all the session evaluations of an event are collected in an Excel file, the R code provided generates a beautiful report about the statistics of feedbacks
+At the end of the event, all the session evaluations are collected and registered in an Excel file.
+Following a given Excel template, the R code provided in the Rmd ([R Markdown](https://rmarkdown.rstudio.com/articles_intro.html)) file generates a beautiful report about the statistics of feedbacks if [compiled in RStudio](https://kbroman.org/knitr_knutshell/pages/Rmarkdown.html#converting-r-markdown-to-html).
 
 ## Demo
 You can find a fully functional HTML demo [here](https://lucazav.github.io/speaker-evaluation-statistics-demo)
+
+## Technical Details
