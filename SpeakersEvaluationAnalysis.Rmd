@@ -14,9 +14,9 @@ output:
 
 ```{r load-packages, message=FALSE, echo=FALSE}
 
-####################################
-#  INPUT VARIABLES IN EXCEL FILES  #
-####################################
+######################
+#  INPUT PARAMETERS  #
+######################
 excel.full.path <- "Scores.xlsx"
 speaker.characteristcs <- c("Expectation", "Interesting", "Useful", "OralPresentation")
 speaker.qualities <- c("IsFunny", "IsExpert", "IsOrator", "IsMotivator", "IsTeacher")   # Use NULL if you haven't qualitiy measures (speaker's attitudes)
@@ -30,7 +30,7 @@ characteristics.circular.barplot.txthjust <- c(1,1,0,0)
 qualities.circular.barplot.txthjust <- c(1,1,0.5,0,0)
 
 feedback.image.path <- "feedback.png"   # Use an empty string if you haven't any feedback ticket image to show
-####################################
+#######################
 
 old.w <- getOption("warn")
 options(warn = -1)
@@ -67,9 +67,9 @@ df <- sessions %>%
   inner_join(speakers, by = "SpeakerName") %>%
   mutate(TrackName = as.factor(TrackName))
 ```
-## Details
+## Variables In Evaluation Form
 
-The following is the ticket for feedbacks:
+The following is the evaluation form for feedbacks:
 
 ```{r out.width = "50%", echo=FALSE}
 if (feedback.image.path != "" & file.exists(feedback.image.path))
@@ -92,6 +92,8 @@ In addition to this he could choose one or more of these qualities:
 * Motivator ("Motivatore")
 * Teacher ("Insegnante")
 
+## Details And Conventions
+### Tracks
 The tracks that were available at the Demo Event are these ones:
 ```{r tracks, results='asis', echo=FALSE}
 df %>% 
@@ -103,6 +105,7 @@ df %>%
 
 The **trimmed mean** is computed by discarting a certain percentage of the lowest and the highest scores in a ordered set of data and then computing the mean of the remaining scores. Trimmed means are used in certain sporting events (e.g. ice skating, gymnastics) to judge competitors' levels of performance and to prevent the effects of extreme ratings, possibly caused by biased judges. In our case, there is quite always someone who doesn't feel comfortable with the topic and gives so a low evaluation, and someone who's a speaker's friend, that overestimates his session.
 
+## Details Of Speakers
 So let's first calculate an auxiliary data frame containing the 10th and 90th percentile of the total evaluation distribution, given by the sum of the characteristic evaluations for each speaker:
 ```{r perc-10-90-by-speaker, results='asis', echo=FALSE}
 trimTreshold <- 0.2
@@ -744,7 +747,7 @@ ranking %>%
     panel.grid.major.y = element_blank(),
     panel.border = element_blank(),
     axis.ticks.y = element_blank(),
-    axis.title.x = element_text(size = 20)
+    axis.title.x = element_text(size = 16)
   ) +
   xlab("") +
   ylab("Total Characteristics Evaluation")
