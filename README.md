@@ -37,7 +37,7 @@ The *Speakers* sheet contains the following informations:
 
 The *sessions* sheet contains all the informations about the session evaluations:
 - Speaker name
-- { a set of session evaluations } (values between 1 and a max defined in the form, in our case 5)
+- { a set of session evaluations } (values between 1 and a max defined in the form, in our case 6)
 - { a set of speaker evaluations } (values can be 1 or 0)
 - Notes (optional)
 
