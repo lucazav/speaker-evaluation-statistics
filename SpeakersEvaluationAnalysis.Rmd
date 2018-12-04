@@ -508,10 +508,11 @@ for (characteristic in c(speaker.characteristcs, "NumOfVoters")) {
 
 
 all.tracks.info %>%
+  ungroup() %>%
+  group_by(TrackName) %>%
   mutate_at(vars(contains('_str')),
             funs(paste.Mean.Sd(.))) %>%
-  ungroup() %>%
-  select(contains('_str')) %>%
+  select(TrackName, contains('_str')) %>%
   rename_at(vars(contains('_str')), funs(sub('_str', '_mean', .))) %>%
   kable(caption = "Tracks' Means and Standard Deviation per Characteristic and Voters per Session") %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
