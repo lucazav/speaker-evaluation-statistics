@@ -750,10 +750,10 @@ ranking <- cleaned %>%
   add_tally() %>%
   ungroup() %>%
   group_by(SpeakerName, n) %>%
-  summarise_at(vars(speaker.characteristcs), funs(mean, sd, (sum(.^2)))) %>%
+  summarise_at(vars(speaker.characteristcs), funs(mean, sd, sumsq=sum(.^2))) %>%
   ungroup() %>%
   mutate( FinalVoteMean = rowSums(.[paste0(speaker.characteristcs, "_mean")])/length(speaker.characteristcs),
-          SumOfSquares = rowSums(.[paste0(speaker.characteristcs, "_(")]) ) %>%
+          SumOfSquares = rowSums(.[paste0(speaker.characteristcs, "_sumsq")]) ) %>%
   mutate( FinalVoteSD = sqrt(SumOfSquares/(length(speaker.characteristcs)*n)-FinalVoteMean^2) )
 
 
