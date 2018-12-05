@@ -29,6 +29,8 @@ The Excel file used to collect the feedbacks has to have two sheets in the follo
 1. Speakers
 2. Sessions
 
+You can find an Excel file with the upon mentioned structure in this repository. It is used for the demo.
+
 The *Speakers* sheet contains the following informations:
 - Speaker name
 - Session name
