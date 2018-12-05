@@ -543,18 +543,35 @@ Here some statistics to compare all the speakers.
 
 Here are reported the sum of votes each speaker has had for each characteristic:
 ```{r speakers-per-characteristic, results='asis', message=FALSE, warning=FALSE, echo=FALSE}
-format_two_dec <- function(d){
-  format(mean(d, na.rm = TRUE), digits = 2, nsmall = 2)
+format_two_dec <- function(d, fun_name){
+  FUN <- match.fun(fun_name)
+  format(FUN(d, na.rm = TRUE), digits = 2, nsmall = 2)
 }
 
-cleaned %>%
+speakers_per_characteristics <- cleaned %>%
   filter(ToBeTrimmed != 1) %>%
   select_(.dots = c("SpeakerName", speaker.characteristcs)) %>%
   group_by(SpeakerName) %>%
   add_tally() %>%
   group_by(SpeakerName, n, add = FALSE) %>%
-  summarise_at(.vars = speaker.characteristcs, funs(format_two_dec(.))) %>%
-  rename(NumOfVOters = n) %>%
+  summarise_at(.vars = speaker.characteristcs, funs(mean=format_two_dec(., "mean"), sd=format_two_dec(., "sd"))) %>%
+  rename(NumOfVoters = n)
+
+for (characteristic in c(speaker.characteristcs, "NumOfVoters")) {
+  characteristic_str <- paste0(characteristic, "_str")
+  
+  speakers_per_characteristics[characteristic_str] <-
+    speakers_per_characteristics %>% ungroup() %>% select( contains(characteristic) ) %>%
+    tidyr::unite()
+}
+
+speakers_per_characteristics %>%
+  ungroup() %>%
+  group_by(SpeakerName) %>%
+  select_(.dots = c("SpeakerName", "NumOfVoters", paste0(speaker.characteristcs, "_str"))) %>%
+  mutate_at(vars(contains('_str')),
+            funs(paste.Mean.Sd(.))) %>%
+  rename_at(vars(contains('_str')), funs(sub('_str', '_mean', .))) %>%
   kable(caption = "Speaker's Votes per Characteristic") %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
 ```
