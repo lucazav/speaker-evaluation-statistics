@@ -721,37 +721,51 @@ if (!is.null(speaker.qualities)){
 ### Speakers Overall Ranking
 
 Averaging the sum of all characteristics' votes, is possible to have an overall ranking for the speakers.
-Here a visualization of the rankings:
+Here a visualization of the ranking, including the standard deviation for each speaker:
 
 ```{r overall-ranking-plot, results='asis', fig.width=7, fig.height=7, message=FALSE, warning=FALSE, echo=FALSE}
+# https://stats.stackexchange.com/a/276035/138616
 ranking <- cleaned %>%
   filter(ToBeTrimmed != 1) %>%
   mutate_if(is.numeric, funs(replace(., is.na(.), 0))) %>% # Fill NA values in numeric cols with 0
-  mutate(FinalVote = rowSums(.[speaker.characteristcs])) %>%
+  #mutate(FinalVote = rowSums(.[speaker.characteristcs])) %>%
   group_by(SpeakerName) %>%
-  summarise(FinalVote = mean(FinalVote))
+  add_tally() %>%
+  ungroup() %>%
+  group_by(SpeakerName, n) %>%
+  summarise_at(vars(speaker.characteristcs), funs(mean, sd, (sum(.^2)))) %>%
+  ungroup() %>%
+  mutate( FinalVoteMean = rowSums(.[paste0(speaker.characteristcs, "_mean")])/length(speaker.characteristcs),
+          SumOfSquares = rowSums(.[paste0(speaker.characteristcs, "_(")]) ) %>%
+  mutate( FinalVoteSD = sqrt(SumOfSquares/(length(speaker.characteristcs)*n)-FinalVoteMean^2) )
+
 
 ranking %>%
-  arrange(FinalVote) %>%
+  arrange(FinalVoteMean) %>%
   mutate(SpeakerName = factor(SpeakerName, SpeakerName)) %>%
-  ggplot(aes(x=SpeakerName, y=FinalVote)) +
-  geom_segment( aes(x=SpeakerName, xend=SpeakerName, y=0, yend=FinalVote),
-                color="steelblue4", size=1) +
+  ggplot(aes(x=SpeakerName, y=FinalVoteMean)) +
+  geom_segment( aes(x=SpeakerName, xend=SpeakerName, y=0, yend=FinalVoteMean),
+                color="steelblue4", size=1.1) +
+  geom_errorbar(aes(ymin=FinalVoteMean-FinalVoteSD, ymax=FinalVoteMean+FinalVoteSD),
+                width=.4, color="firebrick2") +
   geom_point( color="steelblue4", size=4, alpha=0.6) +
-  geom_text(aes(y = FinalVote, label = format(FinalVote, digits = 2, nsmall = 2)),
-            hjust = -0.5, vjust = 0.4,
+  geom_text(aes(y = FinalVoteMean, label = format(FinalVoteMean, digits = 2, nsmall = 2)),
+            hjust = -0.4, vjust = -0.2,
+            colour = "steelblue4", size=3) +
+  geom_text(aes(y = FinalVoteMean+FinalVoteSD, label = paste0("±", format(FinalVoteSD, digits = 2, nsmall = 2))),
+            hjust = -0.2, vjust = 0.2,
             colour = "steelblue4", size=3) +
   theme_light() +
-  coord_flip(ylim=c(5,25)) +
+  coord_flip(ylim=c(2,7)) +
   
   theme(
     panel.grid.major.y = element_blank(),
     panel.border = element_blank(),
     axis.ticks.y = element_blank(),
-    axis.title.x = element_text(size = 12)
+    axis.title.x = element_text(size = 16)
   ) +
   xlab("") +
-  ylab("Total Characteristics Evaluation")
+  ylab("Total Votes")
 
 options(warn = old.w)
 ```
