@@ -55,6 +55,9 @@ The input parameters to fill in the Rmd file are the following:
 - *qualities.circular.barplot.txthjust* (vector for label adjustments in a barplot)
 - *feedback.image.path* (full path of an optional image of the evaluation form)
 
+### R Version Used
+I developed the R script using the **3.4.3 version**. Some issues arise when using the 3.5.x versions. I'll try to fix them in the next version.
+
 ## Current Limitations
 Actually the report has the following limitations:
 - One speaker can deliver only one session
