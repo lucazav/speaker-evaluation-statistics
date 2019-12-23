@@ -1,7 +1,7 @@
 ---
 title: 'Demo Event: Speakers Evaluation'
 author: "Luca Zavarella"
-date: "December 3, 2018"
+date: "December 23, 2019"
 output:
   html_document:
     self_contained: yes
@@ -308,12 +308,12 @@ for (t in tracks)
     
     trimmedMeans[characteristic_str] <-
       trimmedMeans %>% ungroup() %>% select( contains(characteristic) ) %>%
-      tidyr::unite()
+      tidyr::unite( !!characteristic_str, matches(characteristic) )
   }
   
   paste.Mean.Sd <- function(s){
     paste(format(as.numeric(strsplit(s, "\\_")[[1]][1]), digits = 2, nsmall = 2),
-          "±",
+          "Â±",
           format(as.numeric(strsplit(s, "\\_")[[1]][2]), digits = 2, nsmall = 2)) }
     
   
@@ -503,7 +503,7 @@ for (characteristic in c(speaker.characteristcs, "NumOfVoters")) {
   
   all.tracks.info[characteristic_str] <-
     all.tracks.info %>% ungroup() %>% select( contains(characteristic) ) %>%
-    tidyr::unite()
+    tidyr::unite( !!characteristic_str, matches(characteristic) )
 }
 
 
@@ -562,7 +562,7 @@ for (characteristic in c(speaker.characteristcs, "NumOfVoters")) {
   
   speakers_per_characteristics[characteristic_str] <-
     speakers_per_characteristics %>% ungroup() %>% select( contains(characteristic) ) %>%
-    tidyr::unite()
+    tidyr::unite( !!characteristic_str, matches(characteristic) )
 }
 
 speakers_per_characteristics %>%
@@ -769,7 +769,7 @@ ranking %>%
   geom_text(aes(y = FinalVoteMean, label = format(FinalVoteMean, digits = 2, nsmall = 2)),
             hjust = -0.4, vjust = -0.2,
             colour = "steelblue4", size=3) +
-  geom_text(aes(y = FinalVoteMean+FinalVoteSD, label = paste0("±", format(FinalVoteSD, digits = 2, nsmall = 2))),
+  geom_text(aes(y = FinalVoteMean+FinalVoteSD, label = paste0("Â±", format(FinalVoteSD, digits = 2, nsmall = 2))),
             hjust = -0.2, vjust = 0.2,
             colour = "steelblue4", size=3) +
   theme_light() +
