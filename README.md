@@ -56,7 +56,7 @@ The input parameters to fill in the Rmd file are the following:
 - *feedback.image.path* (full path of an optional image of the evaluation form)
 
 ### R Version Used
-I developed the R script using the **3.4.3 version**. Some issues arise when using the 3.5.x versions. I'll try to fix them in the next version.
+I developed the R script using the **3.4.3 version**. It is tested with success on 3.5.x version (using the updated library of *tidyverse*).
 
 ## Current Limitations
 Actually the report has the following limitations:
